@@ -1,9 +1,14 @@
-mod validations;
+#![allow(dead_code)]
+
+pub mod tokens;
+pub mod validations;
+pub mod xlsx_reader;
 
 use crate::lang;
 use regex::Regex;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::str::from_utf8;
 use std::{collections::HashMap, fs::File, path::PathBuf};
 
 /// Alias for a set of tokens (placeholders).
@@ -22,15 +27,64 @@ type DocxResult<T> = Result<T, DocxError>;
 pub enum DocxError {
     #[error("IO error")]
     Io(#[from] std::io::Error),
-    #[error("Zip error")]
+    #[error("Ziping on file docx error")]
     Zip(#[from] zip::result::ZipError),
     #[error("Validation error: {0}")]
     Validation(String),
     #[error("Processing error: {0}")]
     Processing(String),
+    #[error("Parsing csv file")]
+    CsvError(#[from] csv::Error),
+    
+    #[error("PiagamDispendikError {0}")]
+    ProagramDispendikError(String),
+
+    #[error("Unknown Erorr on PiagamDispendik Application")]
+    UnknownError,
 }
 
-type FileMap = HashMap<String, String>;
+pub type FileMap = HashMap<String, Vec<u8>>;
+
+trait InputOutputPiagam {}
+
+#[derive(Debug, Default)]
+pub struct DataInput {
+    pub input_path: PathBuf,
+    pub target_xml: Option<String>,
+    pub header: Option<Vec<String>>,
+    pub file_data: Vec<Vec<String>>,
+}
+
+impl DataInput {
+    pub fn open<P: AsRef<Path>>(input: P) -> DocxResult<Self> {
+        if input.as_ref().ends_with(".csv") {
+            let mut rdr = csv::Reader::from_path(input.as_ref())?;
+            let header = if rdr.has_headers() {
+                Some(rdr.headers()?.deserialize(None)?)
+            } else {
+                None
+            };
+            let data = rdr
+                .deserialize()
+                .map(|f| f.unwrap())
+                .collect::<Vec<Vec<String>>>();
+
+            Ok(Self {
+                input_path: input.as_ref().to_path_buf(),
+                target_xml: None,
+                file_data: if header != None { data[1..].to_vec() } else { data },
+                header,
+            })
+        } else {
+            todo!("excel document not implemented yet");
+            // Ok(Self {
+            // input_path: todo!("excel document not implemented yet"),
+            // target_xml: (),
+            // file_data: (),
+            // })
+        }
+    }
+}
 
 /// Main DOCX filler / document generator.
 ///
@@ -38,45 +92,32 @@ type FileMap = HashMap<String, String>;
 #[derive(Debug)]
 pub struct DocxTemplate {
     /// input path of the DOCX template loaded by this struct.
-    input_path: PathBuf,
+    pub input_path: PathBuf,
 
     /// filename/path of the DOCX contents (actual text of the DOCX document).
-    target_xml: String,
+    pub target_xml: String,
 
     /// in-memory storage of all the DOCX contents/meta-data.
-    file_data: FileMap,
+    pub file_data: FileMap,
 }
 
-#[allow(dead_code)] // TODO - seriously something's wrong with dead code reports!
 impl DocxTemplate {
-    /// Creates the new generator, loading the whole input DOCX file into memory.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - path to the file to be loaded (absolute/relative to the running app)
-    ///
-    /// # Errors
-    ///
-    /// Can return error if I/O problems are encountered during opening of the DOCX file.
-    /// ZIP related errors can also be raised when reading the DOCX contents into memory.
-    pub fn open(input: &Path) -> DocxResult<DocxTemplate> {
+    pub fn open<P: AsRef<Path>>(input: P) -> DocxResult<Self> {
         let mut file_map: FileMap = Default::default();
-
-        let zip_file = File::open(input)?;
-        let mut zip = zip::ZipArchive::new(zip_file)?;
-        for i in 0..zip.len() {
-            let mut entry = zip.by_index(i)?;
-
-            let key = String::from(entry.name());
-            let mut file_buffer = String::new();
-            entry.read_to_string(&mut file_buffer)?;
-
-            file_map.insert(key, file_buffer);
+        let mut zip_content = zip::ZipArchive::new(File::open(input.as_ref())?)?;
+        file_map.reserve(zip_content.len());
+        for i in 0..zip_content.len() {
+            let mut entry = zip_content.by_index(i)?;
+            let mut file_buffer = Vec::new();
+            if let Ok(_) = entry.read_to_end(&mut file_buffer) {
+                let name = &entry.name();
+                file_map.insert(name.to_string(), file_buffer);
+            };
         }
 
-        Ok(DocxTemplate {
-            input_path: PathBuf::from(input),
-            target_xml: String::from("word/document.xml"),
+        Ok(Self {
+            input_path: input.as_ref().to_path_buf(),
+            target_xml: "word/document.xml".to_owned(),
             file_data: file_map,
         })
     }
@@ -88,9 +129,7 @@ impl DocxTemplate {
     /// Can return errors if no DOCX is loaded when attempting this,
     /// or when parsing of tokens fail.
     pub fn template_tokens(&self) -> DocxResult<TokenPack> {
-        let document = self
-            .document_contents()
-            .ok_or_else(|| DocxError::Processing(lang::tr("ui-docx-no-template")))?;
+        let document = self.document_contents()?;
 
         let re = match Regex::new(r"\{\{.*?\}\}") {
             Ok(re) => re,
@@ -104,7 +143,7 @@ impl DocxTemplate {
         let mut tokens: TokenPack = Default::default();
         for cap in caps {
             if let Some(token) = cap.get(0) {
-                let token_str = token.as_str().to_string();
+                let token_str = token.as_str().to_owned();
                 if !tokens.contains(&token_str) {
                     tokens.push(token_str);
                 }
@@ -116,9 +155,18 @@ impl DocxTemplate {
     }
 
     /// Get the whole textual content of the DOCX template document.
-    fn document_contents(&self) -> Option<String> {
-        let document = self.file_data.get(&self.target_xml);
-        document.map(|content| content.to_string())
+    fn document_contents(&self) -> DocxResult<String> {
+        match self.file_data.get(&self.target_xml) {
+            Some(document) => match from_utf8(&document) {
+                Ok(c) => Ok(c.to_owned()),
+                Err(_) => Err(DocxError::Validation(
+                    "error on parsing utf8 string".to_owned(),
+                )),
+            },
+            None => Err(DocxError::Processing(
+                "file input contents is empty!".to_owned(),
+            )),
+        }
     }
 
     /// Generates a single DOCX file from the loaded template.
@@ -178,14 +226,12 @@ impl DocxTemplate {
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o755);
 
-        for (file_name, file_content) in self.file_data.iter() {
-            zip.start_file(file_name, options)?;
-            zip.write_all(file_content.as_bytes())?;
+        for (name, content) in self.file_data.iter() {
+            zip.start_file(name, options)?;
+            zip.write_all(content.as_slice())?;
         }
 
-        let orig_document = self
-            .document_contents()
-            .ok_or_else(|| DocxError::Processing(lang::tr("docx-filler-fail-load")))?;
+        let orig_document = self.document_contents()?;
 
         let updated_document = replace_tokens(&orig_document, tokens, values);
         zip.start_file(&self.target_xml, options)?;
@@ -209,15 +255,13 @@ impl DocxTemplate {
     pub fn build_docx_batch(
         &self,
         tokens: TokenPackArg,
-        text: &str, // TODO change into some line iterator?
-        separator: &str,
+        text: &Vec<ValuePack>, // TODO change into some line iterator?
         output_pattern: &str,
     ) -> DocxResult<()> {
-        validations::validate_batch(tokens, text, separator, output_pattern)?;
+        validations::validate_batch(tokens, text, output_pattern)?;
 
-        for line in text.lines() {
-            let values = string_to_values(line, separator);
-            self.data_to_docx(tokens, &values, output_pattern)?;
+        for line in text {
+            self.data_to_docx(tokens, &line, output_pattern)?;
         }
 
         Ok(())
@@ -228,17 +272,25 @@ impl DocxTemplate {
 fn replace_tokens(input: &str, tokens: TokenPackArg, values: ValuePackArg) -> String {
     assert_eq!(tokens.len(), values.len());
     let mut output: String = input.to_string();
-    for i in 0..tokens.len() {
-        output = output.replace(&tokens[i], &values[i]);
-    }
+    tokens.iter().enumerate().for_each(|(idx, token)| {
+        output = output.replace(token, &values[idx]);
+    });
     output
 }
 
 /// Parse the input string into set of values.
 fn string_to_values(input: &str, separator: &str) -> ValuePack {
-    let values: ValuePack = input
+    input
         .split(separator)
-        .map(|x| x.trim().to_string())
-        .collect();
-    values
+        .filter(|spr| !spr.is_empty())
+        .map(|x| x.trim().to_owned())
+        .collect()
+}
+
+fn vec_str_to_values(input: &Vec<String>) -> ValuePack {
+    input
+        .into_iter()
+        .filter(|spr| !spr.is_empty())
+        .map(|x| x.trim().to_owned())
+        .collect()
 }

@@ -8,8 +8,8 @@ valid-no-tokens = tidak ada token yang tersedia!
 # $token (String) - The token that user tried to use multiple times in replacements.
 valid-token-duplicity = Token { $token } dapat digunakan hanya sekali!
 valid-missing-input = Tidak dapat menemnukan value input!
-# $tokens (String) - Number of tokens on input.
-# $values (String) - Number of values on input.
+# $tokens (String) - Jumlah Token pada input.
+# $values (String) - Jumlah value pada input.
 valid-count-mismatch =
     Jumlah token tidak sama dengan jumlah value pada on input token!
     tokens: { $tokens }
@@ -19,39 +19,44 @@ valid-count-mismatch =
 valid-line-mismatch =
     Terjadi Kesalahan pada baris: { $line } didalam input:
     { $details }
-# $filename (String) - Resulting output file name that does not fulfill the .docx suffix requirement.
+# $filename (String) - Nama Hasil File output tidak memenuhi kriteria .docx ekstensi.
 valid-no-docx-suffix =
-    Output file name should end with .docx!
+    Nama Output File hasil di akhiri dengan ekstensi .docx!
     You have: "{ $filename }".
-# $filename (String) - Resulting output file name that multiple input values would have due to output pattern rules.
-valid-same-output-filename = Multiple input lines would have same output filename "{ $filename }"!
+# $filename (String) - Nama dari beberapa File output harus mengikuti peraturan penamaan!.
+valid-same-output-filename = Lebih dari satu input line harus memiliki nama file yang sama "{ $filename }"!
 
 #
-ui-docx-app-title = docx template filler
-ui-docx-load-failed = Failed to load docx template!
-ui-docx-generated = Created docx files succesfully.
-ui-docx-success =  Success
-ui-docx-failure = Oops...
-ui-docx-no-template = No template file opened yet!
-ui-docx-fail-font = Failed to set default font!
-ui-docx-fail-init = Failed to init Native Windows GUI!
-ui-docx-fail-build = Failed to build the interface!
+ui-docx-app-title = Piagam Dispendik Filler
+ui-docx-load-failed = Gagal Memuat file Docx!
+ui-docx-generated = Berhasil Mengenerate / Membuat File Docx dari inputan.
+ui-docx-success =  Sukses!
+ui-docx-failure = Waduh...
+ui-docx-no-template = Anda belum memberikan input file template yang akan di isi!
+ui-docx-fail-font = Terjadi Kegagalam saat menyetel font default!
+ui-docx-fail-init = Terjadi Kegagalan saat inisialisasi Native Windows GUI!
+ui-docx-fail-build = Terjadi Kegagalan pada interface builder!
 #
-ui-template-label = Currently loaded template:
-ui-template-dialog = Open File
-ui-template-button = Load new docx
-ui-template-default-folder-fail = Failed to set working folder!
+ui-template-label = Template saat ini yang termuat:
+ui-template-dialog = Buka File Template
+ui-template-button = Muat Docx Baru
+ui-template-default-folder-fail = Terjadi Kesalahan saat menyetel folder kerja!
 #
-ui-tokens-label = Tokens (placeholders) found in file:
-ui-tokens-failed-sep-create = Failed to create separator!
-ui-tokens-failed-sep-add = Failed to add separator to layout!
-ui-tokens-failed-tok-create = Failed to create token!
-ui-tokens-failed-tok-add = Failed to add token to layout!
+ui-data-dialog = Buka File Data Input
+ui-data-label = Data saat ini yang termuat:
+ui-data-button = Muat Data Baru
+ui-data-default-folder-fail = Terjadi Kesalahan saat menyetel folder kerja!
 #
-ui-values-label = Values to be filled over tokens (one line per docx to create):
+ui-tokens-label = Tokens (placeholders) ditemukan pada file:
+ui-tokens-failed-sep-create = Gagal Membuat Karakter Pemisah!
+ui-tokens-failed-sep-add = Terjadi Kesalahan saat menambahkan Karakter Pemisah pada Layout!
+ui-tokens-failed-tok-create = Terjadi Kesalahan saat membuat token!
+ui-tokens-failed-tok-add = Terjadi Kesalahan saat menambahkan token pada Layout!
 #
-ui-output-label = Output files name pattern:
-ui-output-button = Generate DOCX files
-ui-options-sep-label = Value separator:
+ui-values-label = Isi Setiap Value sesuai dengan Token (Satu Line per Halaman):
+#
+ui-output-label = Pola Nama File Output:
+ui-output-button = Hasilkan Docx File
+ui-options-sep-label = Karakter Pemisah:
 
-lang-not-found = Cannot switch to requested language!
+lang-not-found = Tidak dapat mengubah bahasa pada bahasa yang diminta!

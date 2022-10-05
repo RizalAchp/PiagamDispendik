@@ -5,17 +5,16 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[target.'cfg(windows)'.dependencies]
+[dependencies]
 regex = "1.5"
 serde = { version = "1", features = ["derive"] }
-zip = { version = "0.6", default-features = false }
+serde-xml-rs = "0.6"
+serde_derive = "1.0"
+zip = "0.6"
 csv = "1.1"
 thiserror = "1.0"
-
-# UI
 native-windows-gui = "1.0"
 native-windows-derive = "1.0"
-
 lazy_static = "1.4"
 unic-langid = "0.9"
 fluent-templates = "0.8"

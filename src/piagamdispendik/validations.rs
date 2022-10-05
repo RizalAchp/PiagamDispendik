@@ -39,13 +39,12 @@ pub fn validate_single(
 /// Can return Docx::Validation on failure, with details in message.
 pub fn validate_batch(
     tokens: TokenPackArg,
-    text: &str,
-    separator: &str,
+    text: &Vec<Vec<String>>,
     output_pattern: &str,
 ) -> Result<(), DocxError> {
     validate_tokens(tokens)?;
-    validate_values_multiline(text, separator, tokens)?;
-    validate_filename_multiline(tokens, text, separator, output_pattern)?;
+    validate_values_multiline(text, tokens)?;
+    validate_filename_multiline(tokens, text, output_pattern)?;
     Ok(())
 }
 
@@ -97,13 +96,11 @@ fn tokens_counts_map(tokens: TokenPackArg) -> HashMap<String, u8> {
 /// Can return Docx::Validation on failure, with details in message.
 fn validate_filename_multiline(
     tokens: TokenPackArg,
-    text: &str,
-    separator: &str,
+    text: &Vec<ValuePack>,
     output_pattern: &str,
 ) -> Result<(), DocxError> {
     let mut names: HashMap<String, bool> = Default::default();
-    for line in text.lines() {
-        let values = super::string_to_values(line, separator);
+    for values in text {
         validate_values(tokens, &values)?;
 
         let filename = super::replace_tokens(output_pattern, tokens, &values);
@@ -158,16 +155,14 @@ fn validate_filename(filename: &str) -> Result<(), DocxError> {
 ///
 /// Can return Docx::Validation on failure, with details in message.
 fn validate_values_multiline(
-    text: &str,
-    separator: &str,
+    text: &Vec<ValuePack>,
     tokens: TokenPackArg,
 ) -> Result<(), DocxError> {
     let mut i: usize = 1;
     if text.is_empty() {
         return Err(DocxError::Validation(lang::tr("valid-missing-input")));
     }
-    for inst in text.lines() {
-        let values: ValuePack = super::string_to_values(inst, separator);
+    for values in text {
         if let Err(err) = validate_values(tokens, &values) {
             let args: lang::TrArgVec = vec![
                 ("line".to_string(), i.to_string()),

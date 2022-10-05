@@ -1,46 +1,53 @@
 mod consts;
+mod data_ui;
 mod options_ui;
 mod output_ui;
 mod template_ui;
 mod tokens_ui;
 mod values_ui;
 
-use crate::docx_filler::DocxTemplate;
 use crate::lang;
+use crate::piagamdispendik::{DocxTemplate, DataInput, ValuePack};
 use crate::ui::{
     options_ui::OptionsUi, output_ui::OutputUi, template_ui::TemplateUi, tokens_ui::TokensUi,
     values_ui::ValuesUi,
 };
-use nwd::NwgUi;
+
+use nwd::*;
 use nwg::stretch::style::FlexDirection;
 use nwg::NativeUi;
-use std::{cell::RefCell, path::Path};
+use std::cell::RefCell;
+use std::path::Path;
+
+use self::data_ui::DataUi;
 
 pub fn init_app() {
     nwg::init().unwrap_or_else(|_| panic!("{}", lang::tr("ui-docx-fail-init")));
 
     let mut font = nwg::Font::default();
     nwg::Font::builder()
-        .family("Times New Roman")
+        .family("Segoe UI")
         .size(20)
         .build(&mut font)
         .unwrap_or_else(|_| panic!("{}", lang::tr("ui-docx-fail-build")));
     nwg::Font::set_global_default(Some(font));
+    nwg::enable_visual_styles();
 
-    let _app = FillerApp::build_ui(Default::default())
+    let _app = PiagamDispendikApp::build_ui(Default::default())
         .unwrap_or_else(|_| panic!("{}", lang::tr("ui-docx-fail-build")));
     nwg::dispatch_thread_events();
 }
 
-#[derive(Default, NwgUi)]
-pub struct FillerApp {
+#[derive(NwgUi, Default)]
+pub struct PiagamDispendikApp {
     opened_docx: RefCell<Option<DocxTemplate>>,
+    opened_data: RefCell<Option<DataInput>>,
 
     #[nwg_control(title: &lang::tr("ui-docx-app-title"), size: (960, 540), position: (80, 60), accept_files: true)]
-    #[nwg_events(OnWindowClose: [FillerApp::exit(SELF)], OnFileDrop: [FillerApp::load_drop_files(SELF, EVT_DATA)])]
+    #[nwg_events(OnWindowClose: [PiagamDispendikApp::exit(SELF)], OnFileDrop: [PiagamDispendikApp::load_drop_files(SELF, EVT_DATA)])]
     window: nwg::Window,
 
-    #[nwg_layout(parent: window, flex_direction: FlexDirection::Column, auto_spacing: Some(4), padding: consts::WINDOW_PAD)]
+    #[nwg_layout(parent: window, flex_direction: FlexDirection::Column, auto_spacing: Some(5), padding: consts::WINDOW_PAD)]
     main_layout: nwg::FlexboxLayout,
 
     // // configuration options controls
@@ -48,7 +55,7 @@ pub struct FillerApp {
     #[nwg_layout_item(layout: main_layout, flex_shrink: 1.0, min_size: consts::MIN_ONELINER_SIZE)]
     options_frame: nwg::Frame,
     #[nwg_partial(parent: options_frame)]
-    #[nwg_events((lang_dropdown, OnComboxBoxSelection): [FillerApp::set_lang(SELF)])]
+    #[nwg_events((lang_dropdown, OnComboxBoxSelection): [PiagamDispendikApp::set_lang(SELF)])]
     options_partial: OptionsUi,
 
     // template related controls - open / show currently opened DOCX template file
@@ -56,8 +63,16 @@ pub struct FillerApp {
     #[nwg_layout_item(layout: main_layout, flex_shrink: 1.0, min_size: consts::MIN_TWOLINER_SIZE)]
     template_frame: nwg::Frame,
     #[nwg_partial(parent: template_frame)]
-    #[nwg_events((button, OnButtonClick): [FillerApp::open_new_file(SELF)])]
+    #[nwg_events((button, OnButtonClick): [PiagamDispendikApp::open_new_file_docx(SELF)])]
     template_partial: TemplateUi,
+
+    // template related controls - open / show currently opened data xlsx/csv file
+    #[nwg_control(flags: "VISIBLE")]
+    #[nwg_layout_item(layout: main_layout, flex_shrink: 1.0, min_size: consts::MIN_TWOLINER_SIZE)]
+    data_frame: nwg::Frame,
+    #[nwg_partial(parent: data_frame)]
+    #[nwg_events((button, OnButtonClick): [PiagamDispendikApp::open_new_file_data(SELF)])]
+    data_partial: DataUi,
 
     // template tokens - list all the tokens found in opened docx, and allow changing order (by rather limited win32 lib UI controls)
     #[nwg_control(flags: "VISIBLE")]
@@ -78,25 +93,40 @@ pub struct FillerApp {
     #[nwg_layout_item(layout: main_layout, flex_shrink: 1.0, min_size: consts::MIN_TWOLINER_SIZE)]
     output_frame: nwg::Frame,
     #[nwg_partial(parent: output_frame)]
-    #[nwg_events((button, OnButtonClick): [FillerApp::generate_docxs(SELF)])]
+    #[nwg_events((button, OnButtonClick): [PiagamDispendikApp::generate_docxs(SELF)])]
     output_partial: OutputUi,
 }
 
-impl FillerApp {
+impl PiagamDispendikApp {
     /// Proxy event handler for TemplateUi partial.
-    fn open_new_file(&self) {
-        if let Some(file) = self.template_partial.get_browse_file(&self.window) {
-            self.load_docx(&file);
+    fn open_new_file_docx(&self) {
+        match self.template_partial.get_browse_file(&self.window) {
+            Some(file) => self.load_docx(&file),
+            None => eprintln!("file picked from browser file is empty"),
+        }
+    }
+
+    fn open_new_file_data(&self) {
+        match self.data_partial.get_browse_file(&self.window) {
+            Some(file) => self.load_csv(&file),
+            None => eprintln!("file picked from browser file is empty"),
         }
     }
 
     /// Drop of files event handler on app window - loads docx template for processing.
     /// Acts as alternative approach to open file (instead of "Load template" button).
     pub fn load_drop_files(&self, data: &nwg::EventData) {
-        let drop = data.on_file_drop();
-        if let Some(file) = drop.files().into_iter().next() {
+        for file in data.on_file_drop().files().into_iter() {
             // only first file processed - add multiple file handling if/when such feature implemented
-            self.load_docx(&file);
+            if file.ends_with(".docx") {
+                self.load_docx(&file);
+            } else if file.ends_with(".csv") {
+                self.load_csv(&file);
+            } else if file.ends_with(".xlsx") {
+                self.load_excel(&file);
+            } else {
+                continue;
+            }
         }
     }
 
@@ -105,11 +135,32 @@ impl FillerApp {
         lang::tr("ui-docx-load-failed")
     }
 
+    fn load_csv(&self, file: &str) {
+        match DataInput::open(&file) {
+            Ok(inpt) => {
+                self.data_partial.set_current_data(file);
+                self.values_partial.insert_header(&inpt.header);
+                self.values_partial.load_data(&inpt.file_data);
+                self.opened_data.replace(Some(inpt));
+            }
+            Err(error) => {
+                nwg::modal_error_message(
+                    &self.window,
+                    &error.to_string(),
+                    "Error on Opening input data file",
+                );
+            }
+        }
+    }
+
+    fn load_excel(&self, file: &str) {
+        todo!("implements for opening load excel file (xlsx) {:?}", file)
+    }
+
     /// Loads & bind new docx structure from file to the app.
-    ///  Updates all the app sub-components with new DOCX info as needed.
-    fn load_docx(&self, file: &str) {
-        let docx_path = Path::new(file);
-        match DocxTemplate::open(docx_path) {
+    /// Updates all the app sub-components with new DOCX info as needed.
+    fn load_docx<P: AsRef<Path>>(&self, file: P) {
+        match DocxTemplate::open(file.as_ref()) {
             Ok(docx) => {
                 let tokens = match docx.template_tokens() {
                     Ok(tokens) => tokens,
@@ -122,7 +173,8 @@ impl FillerApp {
 
                 self.opened_docx.replace(Some(docx));
 
-                self.template_partial.set_current_docx(file);
+                self.template_partial
+                    .set_current_docx(file.as_ref().to_str().unwrap());
 
                 let separator = self.options_partial.get_separator();
                 self.tokens_partial
@@ -154,19 +206,31 @@ impl FillerApp {
                 return;
             }
         };
+        let values: Vec<ValuePack> = match self.opened_data.take() {
+            Some(inner) => inner.file_data,
+            None => Vec::new(),
+        };
 
-        let tokens = self.tokens_partial.get_selected_tokens();
-        let text = self.values_partial.get_values_text();
-        let separator = self.options_partial.get_separator();
-        let output_pattern = self.output_partial.output_pattern();
-
-        if let Err(err) = generator.build_docx_batch(&tokens, &text, &separator, &output_pattern) {
-            let err_msg = self.failed_load_str();
-            nwg::modal_error_message(&self.window, &err_msg, &err.to_string());
-        } else {
-            let title = lang::tr("ui-docx-success");
-            let content = lang::tr("ui-docx-generated");
-            nwg::modal_info_message(&self.window, &title, &content);
+        let _separator = &self.options_partial.get_separator();
+        match generator.build_docx_batch(
+            &self.tokens_partial.get_selected_tokens(),
+            &values,
+            &self.output_partial.output_pattern(),
+        ) {
+            Err(err) => {
+                nwg::modal_error_message(
+                    &self.window,
+                    &lang::tr("ui-docx-load-failed"),
+                    &err.to_string(),
+                );
+            }
+            Ok(()) => {
+                nwg::modal_info_message(
+                    &self.window,
+                    &lang::tr("ui-docx-success"),
+                    &lang::tr("ui-docx-generated"),
+                );
+            }
         }
     }
 
@@ -185,6 +249,7 @@ impl FillerApp {
     /// Each specific partial is responsible for invoking all required updates.
     fn reset_language(&self) {
         self.template_partial.reset_language();
+        self.data_partial.reset_language();
         self.tokens_partial.reset_language();
         self.values_partial.reset_language();
         self.options_partial.reset_language();

@@ -1,5 +1,5 @@
 use super::consts;
-use crate::docx_filler::{TokenPack, TokenPackArg};
+use crate::piagamdispendik::{TokenPack, TokenPackArg};
 use crate::lang::tr;
 use nwd::NwgPartial;
 use nwg::stretch::geometry::Size;

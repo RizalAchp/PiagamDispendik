@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::RwLock};
+use std::{collections::HashMap, sync::RwLock, iter::FromIterator};
 
 use unic_langid::{langid, LanguageIdentifier};
 
@@ -7,8 +7,7 @@ use fluent_templates::{fluent_bundle::FluentValue, static_loader, Loader};
 #[derive(Debug, Clone)]
 pub enum SupportedLanguage {
     EnglishUs,
-    Czech,
-    Russian,
+    Indonesia,
 }
 
 use SupportedLanguage as sl;
@@ -16,15 +15,14 @@ use SupportedLanguage as sl;
 impl SupportedLanguage {
     /// Returns collection of all the supported languages.
     pub fn collection() -> Vec<SupportedLanguage> {
-        vec![sl::EnglishUs, sl::Czech, sl::Russian]
+        vec![sl::EnglishUs, sl::Indonesia]
     }
 
     /// Returns "localized" textual representation of the enum value.
     pub fn to_name(&self) -> String {
         match self {
             sl::EnglishUs => "English".to_string(),
-            sl::Czech => "Česky".to_string(),
-            sl::Russian => "Русский".to_string(),
+            sl::Indonesia => "Indonesia".to_string(),
         }
     }
 
@@ -41,27 +39,25 @@ impl SupportedLanguage {
     fn to_lang_code(&self) -> String {
         match self {
             sl::EnglishUs => "en-US".to_string(),
-            sl::Czech => "cz".to_string(),
-            sl::Russian => "ru".to_string(),
+            sl::Indonesia => "id-ID".to_string(),
         }
     }
 }
 
 lazy_static! {
     static ref LANG_IDS: HashMap<String, LanguageIdentifier> = {
-        let mut m = HashMap::new();
-        m.insert(sl::EnglishUs.to_lang_code(), langid!("en-US"));
-        m.insert(sl::Czech.to_lang_code(), langid!("cz"));
-        m.insert(sl::Russian.to_lang_code(), langid!("ru"));
-        m
+        HashMap::from_iter([
+            (sl::EnglishUs.to_lang_code(), langid!("en-US")),
+            (sl::Indonesia.to_lang_code(), langid!("id-ID")),
+        ])
     };
-    static ref CURRENT_LANGUAGE: RwLock<SupportedLanguage> = RwLock::new(sl::EnglishUs);
+    static ref CURRENT_LANGUAGE: RwLock<SupportedLanguage> = RwLock::new(sl::Indonesia);
 }
 
 static_loader! {
     static LOCALES = {
         locales: "./locales",
-        fallback_language: "en-US",
+        fallback_language: "id-ID",
         // Optional: A fluent resource that is shared with every locale.
         // core_locales: "./locales/core.ftl",
         customise: |bundle| bundle.set_use_isolating(false),
@@ -98,11 +94,13 @@ pub fn tr_with_args(msg_id: &str, args: TrArgVecArg) -> String {
 /// Translates the input text to the currently set language.
 fn translate(text_id: &str, args: Option<&ArgsMap>) -> String {
     let lang_code = current_lang().to_lang_code();
-    if let Some(li) = LANG_IDS.get(&lang_code) {
-        let translated = &*LOCALES.lookup_complete(li, text_id, args);
-        return translated.to_string();
+    match LANG_IDS.get(&lang_code) {
+        Some(li) => match LOCALES.lookup_complete(li, text_id, args) {
+            Some(trs) => trs,
+            None => text_id.to_string(),
+        },
+        None => text_id.to_string(),
     }
-    text_id.to_string()
 }
 
 // Returns currently set language.
